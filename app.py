@@ -2,14 +2,24 @@ from flask import Flask, render_template
 import pandas as pd
 import plotly.express as px
 import plotly.io as pio
-import os
+from io import StringIO
 
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    # Load and preprocess data
-    df = pd.read_csv('GloHydroRes_vs1.csv')
+    # Simulated CSV content
+    mock_csv = StringIO("""country,year,capacity_mw,plant_lat,plant_lon
+China,2005,1200,35.8617,104.1954
+Brazil,2010,850,14.2350,-51.9253
+Canada,1995,500,56.1304,-106.3468
+Norway,2000,300,60.4720,8.4689
+India,2015,950,20.5937,78.9629
+USA,1980,1300,37.0902,-95.7129
+""")
+
+    # Read mock data into DataFrame
+    df = pd.read_csv(mock_csv)
     df = df.assign(
         year=lambda d: pd.to_numeric(d['year'], errors='coerce'),
         capacity_mw=lambda d: pd.to_numeric(d['capacity_mw'], errors='coerce'),
