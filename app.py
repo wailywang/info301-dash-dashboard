@@ -19,7 +19,7 @@ USA,1980,1300,37.0902,-95.7129
 """)
 
     # Read mock data into DataFrame
-    df = pd.read_csv(mock_csv)
+    df = pd.read_csv("https://raw.githubusercontent.com/wailywang/info301-dash-dashboard/refs/heads/main/GloHydroRes_vs1.csv")
     df = df.assign(
         year=lambda d: pd.to_numeric(d['year'], errors='coerce'),
         capacity_mw=lambda d: pd.to_numeric(d['capacity_mw'], errors='coerce'),
