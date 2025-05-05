@@ -182,7 +182,11 @@ df_anim = df[
     (df['capacity_mw'] >= min_capacity) &
     (df['year'] >= selected_year_range[0]) &
     (df['year'] <= selected_year_range[1])
-]
+].dropna(subset=['year', 'plant_lat', 'plant_lon', 'capacity_mw'])
+
+# Ensure year is integer and sorted
+df_anim['year'] = df_anim['year'].astype(int)
+df_anim = df_anim.sort_values('year')
 
 fig5 = px.scatter_geo(
     df_anim,
