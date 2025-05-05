@@ -1,46 +1,144 @@
-from flask import Flask, render_template
 import pandas as pd
+import numpy as np
 import plotly.express as px
-import plotly.io as pio
-from io import StringIO
+import plotly.graph_objects as go
+import pycountry
+import streamlit as st
 
-app = Flask(__name__)
+st.set_page_config(layout="wide", page_title="Hydropower Dashboard")
+st.title("Hydropower Visualization Dashboard")
 
-@app.route('/')
-def index():
-    # Simulated CSV content
-    mock_csv = StringIO("""country,year,capacity_mw,plant_lat,plant_lon
-China,2005,1200,35.8617,104.1954
-Brazil,2010,850,14.2350,-51.9253
-Canada,1995,500,56.1304,-106.3468
-Norway,2000,300,60.4720,8.4689
-India,2015,950,20.5937,78.9629
-USA,1980,1300,37.0902,-95.7129
-""")
+# ===============================
+# Load and preprocess data
+# ===============================
+@st.cache_data
+def load_data():
+    df = pd.read_csv("GloHydroRes_vs1.csv")
+    df['year'] = pd.to_numeric(df['year'], errors='coerce')
+    df['capacity_mw'] = pd.to_numeric(df['capacity_mw'], errors='coerce')
+    df['res_vol_mcm'] = df['res_vol_km3'] * 1_000 if 'res_vol_km3' in df.columns else np.nan
 
-    # Read mock data into DataFrame
-    df = pd.read_csv(mock_csv)
-    df = df.assign(
-        year=lambda d: pd.to_numeric(d['year'], errors='coerce'),
-        capacity_mw=lambda d: pd.to_numeric(d['capacity_mw'], errors='coerce'),
-        lat=lambda d: pd.to_numeric(d['plant_lat'], errors='coerce'),
-        lon=lambda d: pd.to_numeric(d['plant_lon'], errors='coerce')
-    ).dropna(subset=['country','year','capacity_mw','lat','lon'])
+    def iso3(country_name):
+        try:
+            return pycountry.countries.lookup(country_name).alpha_3
+        except LookupError:
+            return None
 
-    # Create plotly mapbox figure
-    fig = px.scatter_mapbox(
-        df, lat='lat', lon='lon',
-        size='capacity_mw', color='capacity_mw',
-        color_continuous_scale='Viridis',
-        size_max=15, zoom=1,
-        mapbox_style='carto-positron',
-        title='Hydropower Facilities by Location and Capacity',
-        labels={'capacity_mw':'Capacity (MW)'}
-    )
+    df['Country_Iso3'] = df['country'].map(iso3)
+    df = df.dropna(subset=['plant_lat', 'plant_lon'])
+    return df
 
-    # Generate HTML for the figure
-    graph_html = pio.to_html(fig, full_html=False)
-    return render_template('index.html', plot=graph_html)
+df = load_data()
 
-if __name__ == '__main__':
-    app.run(debug=True)
+layout_style = dict(
+    template='plotly_white',
+    font=dict(family="Arial", size=14),
+    title_font_size=20,
+)
+
+# ===============================
+# 1. Choropleth Map
+# ===============================
+st.subheader("1. Total Hydropower Capacity by Country")
+country_cap = df.groupby('Country_Iso3', as_index=False)['capacity_mw'].sum()
+fig1 = px.choropleth(
+    country_cap,
+    locations='Country_Iso3',
+    color='capacity_mw',
+    color_continuous_scale='Cividis',
+    title='Total Hydropower Capacity by Country (MW)'
+)
+fig1.update_layout(**layout_style)
+st.plotly_chart(fig1, use_container_width=True)
+
+# ===============================
+# 2. Bubble Map
+# ===============================
+st.subheader("2. Hydropower Plants by Reservoir Volume")
+df_bubble = df.dropna(subset=['res_vol_mcm'])
+fig2 = px.scatter_geo(
+    df_bubble,
+    lat='plant_lat',
+    lon='plant_lon',
+    size=np.sqrt(df_bubble['res_vol_mcm'] + 1),
+    hover_name='name',
+    hover_data={'capacity_mw': ':,.0f', 'res_vol_mcm': ':,.0f'},
+    projection='natural earth',
+    title='Bubble Map of Hydropower Plants (size ∝ reservoir volume)'
+)
+fig2.update_layout(**layout_style)
+st.plotly_chart(fig2, use_container_width=True)
+
+# ===============================
+# 3. Sunburst Chart
+# ===============================
+st.subheader("3. Capacity Distribution by Country and Plant")
+sun = df.groupby(['country', 'name'], as_index=False)['capacity_mw'].sum()
+fig3 = px.sunburst(
+    sun,
+    path=['country','name'],
+    values='capacity_mw',
+    title='Sunburst Chart of Hydropower Capacity'
+)
+fig3.update_layout(**layout_style)
+st.plotly_chart(fig3, use_container_width=True)
+
+# ===============================
+# 4. Time Series
+# ===============================
+st.subheader("4. Installed Capacity by Country Over Time")
+df_ts = df.dropna(subset=['year', 'country', 'capacity_mw'])
+yearly_country = df_ts.groupby(['country', 'year'], as_index=False)['capacity_mw'].sum()
+countries = st.multiselect("Select countries:", sorted(yearly_country['country'].unique()), default=['China', 'United States'])
+
+fig4 = go.Figure()
+for country in countries:
+    data = yearly_country[yearly_country['country'] == country]
+    fig4.add_trace(go.Scatter(
+        x=data['year'],
+        y=data['capacity_mw'],
+        mode='lines',
+        name=country,
+        hovertemplate='<b>%{text}</b><br>Year: %{x}<br>Capacity: %{y:.2f} MW',
+        text=[country]*len(data),
+    ))
+fig4.update_layout(
+    title='Installed Capacity by Country Over Time',
+    xaxis_title='Year',
+    yaxis_title='Installed Capacity (MW)',
+    hovermode='x unified',
+    **layout_style
+)
+st.plotly_chart(fig4, use_container_width=True)
+
+# ===============================
+# 5. Animated Map
+# ===============================
+st.subheader("5. Evolution of Hydropower Facilities Over Time")
+fig5 = px.scatter_geo(
+    df,
+    lat='plant_lat',
+    lon='plant_lon',
+    color='capacity_mw',
+    size='capacity_mw',
+    animation_frame='year',
+    projection='natural earth',
+    hover_name='name',
+    title='Evolution of Hydropower Facilities Over Time',
+    color_continuous_scale='Viridis'
+)
+fig5.update_layout(**layout_style)
+st.plotly_chart(fig5, use_container_width=True)
+
+# ===============================
+# 6. Treemap
+# ===============================
+st.subheader("6. Treemap of Hydropower Capacity")
+fig6 = px.treemap(
+    df,
+    path=['country', 'name'],
+    values='capacity_mw',
+    title='Treemap of Hydropower Capacity by Country and Facility'
+)
+fig6.update_layout(**layout_style)
+st.plotly_chart(fig6, use_container_width=True)
