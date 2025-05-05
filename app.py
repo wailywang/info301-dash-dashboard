@@ -7,6 +7,7 @@ import streamlit as st
 
 st.set_page_config(layout="wide", page_title="Hydropower Dashboard")
 st.title("Hydropower Visualization Dashboard")
+st.markdown("Explore global hydropower capacity, distribution, and trends with interactive charts and filters.")
 
 # ===============================
 # Load and preprocess data
@@ -30,16 +31,53 @@ def load_data():
 
 df = load_data()
 
+# ===============================
+# Sidebar controls
+# ===============================
+st.sidebar.header("Filters & Controls")
+
+min_capacity = st.sidebar.slider(
+    "Minimum Plant Capacity (MW)",
+    min_value=0,
+    max_value=int(df['capacity_mw'].max()),
+    value=100,
+    step=10
+)
+
+min_volume = st.sidebar.slider(
+    "Minimum Reservoir Volume (Million m³)",
+    min_value=0,
+    max_value=int(df['res_vol_mcm'].max() / 1_000),
+    value=100,
+    step=10
+) * 1_000  # Convert to m³
+
+year_min = int(df['year'].min())
+year_max = int(df['year'].max())
+selected_year_range = st.sidebar.slider(
+    "Year Range for Animated Map",
+    min_value=year_min,
+    max_value=year_max,
+    value=(year_min, year_max),
+    step=1
+)
+
+# ===============================
+# Plot settings
+# ===============================
 layout_style = dict(
     template='plotly_white',
     font=dict(family="Arial", size=14),
-    title_font_size=20,
+    title_font=dict(size=22),
 )
 
 # ===============================
 # 1. Choropleth Map
 # ===============================
+st.markdown("---")
 st.subheader("1. Total Hydropower Capacity by Country")
+st.markdown("This map displays the total installed hydropower capacity aggregated by country.")
+
 country_cap = df.groupby('Country_Iso3', as_index=False)['capacity_mw'].sum()
 fig1 = px.choropleth(
     country_cap,
@@ -54,8 +92,15 @@ st.plotly_chart(fig1, use_container_width=True)
 # ===============================
 # 2. Bubble Map
 # ===============================
+st.markdown("---")
 st.subheader("2. Hydropower Plants by Reservoir Volume")
-df_bubble = df.dropna(subset=['res_vol_mcm'])
+st.markdown("This bubble map represents hydropower plants, with bubble size proportional to reservoir volume.")
+
+df_bubble = df[
+    (df['res_vol_mcm'] >= min_volume) &
+    (df['capacity_mw'] >= min_capacity)
+]
+
 fig2 = px.scatter_geo(
     df_bubble,
     lat='plant_lat',
@@ -72,7 +117,10 @@ st.plotly_chart(fig2, use_container_width=True)
 # ===============================
 # 3. Sunburst Chart
 # ===============================
+st.markdown("---")
 st.subheader("3. Capacity Distribution by Country and Plant")
+st.markdown("The sunburst chart shows the hierarchy of countries and their individual plants based on installed capacity.")
+
 sun = df.groupby(['country', 'name'], as_index=False)['capacity_mw'].sum()
 fig3 = px.sunburst(
     sun,
@@ -80,13 +128,16 @@ fig3 = px.sunburst(
     values='capacity_mw',
     title='Sunburst Chart of Hydropower Capacity'
 )
-fig3.update_layout(**layout_style)
+fig3.update_layout(**layout_style, height=800)  # Enlarged
 st.plotly_chart(fig3, use_container_width=True)
 
 # ===============================
 # 4. Time Series
 # ===============================
+st.markdown("---")
 st.subheader("4. Installed Capacity by Country Over Time")
+st.markdown("Visualize how each selected country's hydropower capacity evolved over the years.")
+
 df_ts = df.dropna(subset=['year', 'country', 'capacity_mw'])
 yearly_country = df_ts.groupby(['country', 'year'], as_index=False)['capacity_mw'].sum()
 
@@ -123,9 +174,18 @@ st.plotly_chart(fig4, use_container_width=True)
 # ===============================
 # 5. Animated Map
 # ===============================
+st.markdown("---")
 st.subheader("5. Evolution of Hydropower Facilities Over Time")
+st.markdown("An animated map showing the spatial and temporal development of hydropower facilities worldwide.")
+
+df_anim = df[
+    (df['capacity_mw'] >= min_capacity) &
+    (df['year'] >= selected_year_range[0]) &
+    (df['year'] <= selected_year_range[1])
+]
+
 fig5 = px.scatter_geo(
-    df,
+    df_anim,
     lat='plant_lat',
     lon='plant_lon',
     color='capacity_mw',
@@ -142,7 +202,10 @@ st.plotly_chart(fig5, use_container_width=True)
 # ===============================
 # 6. Treemap
 # ===============================
+st.markdown("---")
 st.subheader("6. Treemap of Hydropower Capacity")
+st.markdown("The treemap illustrates the proportion of hydropower capacity by country and facility.")
+
 fig6 = px.treemap(
     df,
     path=['country', 'name'],
