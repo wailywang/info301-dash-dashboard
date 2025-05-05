@@ -89,7 +89,16 @@ st.plotly_chart(fig3, use_container_width=True)
 st.subheader("4. Installed Capacity by Country Over Time")
 df_ts = df.dropna(subset=['year', 'country', 'capacity_mw'])
 yearly_country = df_ts.groupby(['country', 'year'], as_index=False)['capacity_mw'].sum()
-countries = st.multiselect("Select countries:", sorted(yearly_country['country'].unique()), default=['China', 'United States'])
+
+available_countries = sorted(yearly_country['country'].dropna().unique())
+default_candidates = ['China', 'United States']
+default_countries = [c for c in default_candidates if c in available_countries]
+
+countries = st.multiselect(
+    "Select countries:",
+    available_countries,
+    default=default_countries
+)
 
 fig4 = go.Figure()
 for country in countries:
